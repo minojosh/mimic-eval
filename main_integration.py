@@ -117,7 +117,7 @@ class AgnoRagSystem:
         try:
             logger.info("🔧 Initializing embedder...")
             
-            model_id = self.config.get("HF_LOCAL_EMBEDDER", "Qwen/Qwen2.5-Coder-0.5B")
+            model_id = self.config.get("HF_LOCAL_EMBEDDER", "Qwen/Qwen3-Embedding-4B")
             self.embedder = create_embedder(model_id=model_id)
             
             # Test the embedder

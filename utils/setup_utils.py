@@ -263,7 +263,7 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 
 # Embedder Configuration
 EMBEDDER_PROVIDER=huggingface-local
-HF_LOCAL_EMBEDDER=Qwen/Qwen2.5-Coder-0.5B
+HF_LOCAL_EMBEDDER=Qwen/Qwen3-Embedding-4B
 
 # Model Configuration  
 MODEL_PROVIDER=openrouter

@@ -53,7 +53,7 @@ class AgnoCompatibleEmbedder(Embedder):
     - get_embedding_and_usage(text) -> Tuple[List[float], Optional[Dict]]
     """
 
-    def __init__(self, model_id: str = "Qwen/Qwen2.5-Coder-0.5B", device: str = None, dimensions: int = None):
+    def __init__(self, model_id: str = "Qwen/Qwen3-Embedding-4B", device: str = None, dimensions: int = None):
         """
         Initialize the Agno-compatible embedder.
         
@@ -291,7 +291,7 @@ class AgnoCompatibleEmbedder(Embedder):
             pass  # Ignore cleanup errors
 
 
-def create_embedder(model_id: str = "Qwen/Qwen2.5-Coder-0.5B") -> AgnoCompatibleEmbedder:
+def create_embedder(model_id: str = "Qwen/Qwen3-Embedding-4B") -> AgnoCompatibleEmbedder:
     """
     Factory function to create an Agno-compatible embedder.
     
