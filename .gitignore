@@ -78,6 +78,7 @@ logs/
 models/
 data/
 downloads/
+docs/
 
 # Jupyter Notebooks
 .ipynb_checkpoints
@@ -93,3 +94,5 @@ huggingface_hub/
 # ChromaDB
 *.sqlite3
 *.db
+*.pdf
+icd10cm_codes_2026.txt
