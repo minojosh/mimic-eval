@@ -31,9 +31,9 @@ class AgnoRagAgent:
         self,
         knowledge_base,
         model_provider: str = "openrouter",
-        model_id: str = "google/gemini-2.5-flash",
+        model_id: str = "openai/gpt-oss-120b",
         temperature: float = 0.1,
-        max_tokens: int = 3000
+        max_tokens: int = 6000
     ):
         """
         Initialize the Agno RAG agent.
@@ -104,7 +104,7 @@ class AgnoRagAgent:
             
             # Medical coding specific instructions
             instructions = [
-                "You are a medical coding expert specializing in ICD-10-CM codes.",
+                "You are a medical coding expert specializing in ICD-10 codes.",
                 "ALWAYS search the knowledge base for relevant ICD codes before responding.",
                 "Use the search_knowledge_base function to find relevant medical conditions.",
                 "When analyzing medical conditions, search for related ICD codes first.",
@@ -189,7 +189,7 @@ class AgnoRagAgent:
                 logger.info(f"Testing query: '{query}'")
                 
                 # Test direct knowledge base search first
-                kb_results = self.knowledge_base.search(query, limit=3)
+                kb_results = self.knowledge_base.search(query, limit=5)
                 
                 # Test agent query
                 agent_response = self.query(f"Find ICD-10 codes for: {query}")
@@ -283,7 +283,7 @@ class AgnoRagAgent:
 def create_medical_coding_agent(
     knowledge_base,
     model_provider: str = "openrouter",
-    model_id: str = "google/gemini-2.5-flash"
+    model_id: str = "openai/gpt-oss-120b"
 ) -> AgnoRagAgent:
     """
     Factory function to create a medical coding RAG agent.
@@ -315,9 +315,9 @@ def create_agent_with_environment_config(knowledge_base) -> AgnoRagAgent:
     """
     # Get configuration from environment
     model_provider = os.getenv("MODEL_PROVIDER", "openrouter")
-    model_id = os.getenv("MODEL_ID", "google/gemini-2.5-flash")
+    model_id = os.getenv("MODEL_ID", "openai/gpt-oss-120b")
     temperature = float(os.getenv("TEMPERATURE", "0.1"))
-    max_tokens = int(os.getenv("MAX_TOKENS", "3000"))
+    max_tokens = int(os.getenv("MAX_TOKENS", "6000"))
     
     return AgnoRagAgent(
         knowledge_base=knowledge_base,
