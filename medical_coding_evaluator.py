@@ -465,6 +465,157 @@ Use your search tools to find accurate codes from the knowledge base.
         self.print_evaluation_summary(aggregate_metrics)
         
         return final_results
+
+    # -------------------- New Filtering / Augmentation Utilities --------------------
+    def _ensure_dataset_loaded(self):
+        """Internal helper to lazy-load dataset."""
+        if not self.dataset:
+            if not self.load_dataset():
+                raise ValueError("Failed to load dataset")
+
+    def filter_records(self,
+                       primary_icd_version: Optional[int] = None,
+                       icd_version_allowlist: Optional[List[int]] = None,
+                       sample_size: Optional[int] = None,
+                       random_seed: int = 42) -> List[Dict[str, Any]]:
+        """Return filtered (and optionally sampled) list of records.
+
+        Args:
+            primary_icd_version: Keep only records whose primary_icd_version equals this value (e.g. 9 or 10).
+            icd_version_allowlist: Alternative list of acceptable primary_icd_version values.
+            sample_size: Optional number of records to sample after filtering.
+            random_seed: Seed for reproducibility.
+        """
+        self._ensure_dataset_loaded()
+        records = self.dataset['records']
+
+        if primary_icd_version is not None and icd_version_allowlist is not None:
+            raise ValueError("Provide either primary_icd_version or icd_version_allowlist, not both")
+
+        if primary_icd_version is not None:
+            records = [r for r in records if r.get('primary_icd_version') == primary_icd_version]
+        elif icd_version_allowlist is not None:
+            allowed = set(icd_version_allowlist)
+            records = [r for r in records if r.get('primary_icd_version') in allowed]
+
+        if sample_size is not None and sample_size < len(records):
+            import random
+            random.seed(random_seed)
+            records = random.sample(records, sample_size)
+
+        logger.info(f"Filtered to {len(records)} records (primary_icd_version={primary_icd_version or icd_version_allowlist})")
+        return records
+
+    def run_filtered_evaluation(self,
+                                primary_icd_version: Optional[int] = None,
+                                icd_version_allowlist: Optional[List[int]] = None,
+                                sample_size: Optional[int] = None) -> Dict[str, Any]:
+        """Run evaluation restricted to records matching ICD version criteria.
+
+        Args:
+            primary_icd_version: Single primary_icd_version to keep (e.g. 9 or 10)
+            icd_version_allowlist: List of acceptable primary_icd_version values
+            sample_size: Sample size after filtering
+        Returns:
+            Evaluation result dict identical in structure to run_comprehensive_evaluation()
+        """
+        records = self.filter_records(primary_icd_version, icd_version_allowlist, sample_size)
+        if not records:
+            raise ValueError("No records found after filtering criteria")
+
+        evaluation_results = []
+        for i, record in enumerate(records):
+            logger.info(f"Evaluating (filtered) record {i+1}/{len(records)}: {record.get('hadm_id')}")
+            evaluation_results.append(self.run_evaluation_on_record(record))
+
+        aggregate_metrics = self.calculate_aggregate_metrics(evaluation_results)
+        final_results = {
+            'evaluation_metadata': {
+                'dataset_path': str(self.dataset_path),
+                'evaluation_date': datetime.now().isoformat(),
+                'total_records_evaluated': len(evaluation_results),
+                'sample_size': sample_size,
+                'filter_primary_icd_version': primary_icd_version,
+                'filter_icd_version_allowlist': icd_version_allowlist,
+                'rag_system_info': self.get_rag_system_info()
+            },
+            'aggregate_metrics': aggregate_metrics,
+            'individual_results': evaluation_results,
+            'detailed_analysis': self.generate_detailed_analysis(evaluation_results)
+        }
+        self.evaluation_results = final_results
+        logger.info("Filtered evaluation completed")
+        self.print_evaluation_summary(aggregate_metrics)
+        return final_results
+
+    def augment_dataset_with_predictions(self,
+                                         output_path: str,
+                                         primary_icd_version: Optional[int] = None,
+                                         icd_version_allowlist: Optional[List[int]] = None,
+                                         sample_size: Optional[int] = None,
+                                         include_metrics: bool = True,
+                                         overwrite: bool = True) -> str:
+        """Create a copy of the dataset adding model predictions (and metrics) per record.
+
+        The augmented file will contain all original records, but only those matching
+        the filters will receive a 'model_prediction' (and optional 'prediction_metrics') key.
+
+        Args:
+            output_path: Where to write augmented JSON.
+            primary_icd_version: Filter value (exclusive with icd_version_allowlist).
+            icd_version_allowlist: Alternative multi-value filter.
+            sample_size: Optional cap on number of filtered records to predict on.
+            include_metrics: Whether to compute & store per-record metrics.
+            overwrite: If False and file exists, raise.
+        Returns:
+            Path written.
+        """
+        self._ensure_dataset_loaded()
+        out = Path(output_path)
+        if out.exists() and not overwrite:
+            raise FileExistsError(f"Output already exists: {output_path}")
+
+        target_records = self.filter_records(primary_icd_version, icd_version_allowlist, sample_size)
+        target_hadm_ids = {r.get('hadm_id') for r in target_records}
+
+        augmented_records = []
+        for record in self.dataset['records']:
+            # Copy to avoid mutating original reference
+            rec_copy = dict(record)
+            if record.get('hadm_id') in target_hadm_ids:
+                prediction = self.get_agent_prediction(record)
+                rec_copy['model_prediction'] = {
+                    'codes': prediction.codes,
+                    'descriptions': prediction.descriptions,
+                    'confidence_scores': prediction.confidence_scores,
+                    'reasoning': prediction.reasoning,
+                    'model_used': prediction.model_used,
+                    'timestamp': prediction.timestamp,
+                    'primary_icd_version_filter': primary_icd_version,
+                }
+                if include_metrics:
+                    gt_codes = self.extract_ground_truth_codes(record)
+                    rec_copy['prediction_metrics'] = self.calculate_metrics(prediction.codes, gt_codes)
+            augmented_records.append(rec_copy)
+
+        augmented_dataset = {
+            'metadata': {
+                **self.dataset.get('metadata', {}),
+                'augmentation_date': datetime.now().isoformat(),
+                'augmentation_params': {
+                    'primary_icd_version': primary_icd_version,
+                    'icd_version_allowlist': icd_version_allowlist,
+                    'sample_size': sample_size,
+                    'include_metrics': include_metrics
+                }
+            },
+            'records': augmented_records
+        }
+
+        with open(out, 'w') as f:
+            json.dump(augmented_dataset, f, indent=2)
+        logger.info(f"Augmented dataset with predictions written to {out}")
+        return str(out)
     
     def calculate_aggregate_metrics(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Calculate aggregate metrics across all evaluated records."""
